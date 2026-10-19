@@ -1,0 +1,15 @@
+(function(root){'use strict';
+function shuffle(xs,rng=Math.random){const a=xs.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+class Engine{
+constructor(qs,s,rng=Math.random){this.questions=qs;this.byId=new Map(qs.map(q=>[q.id,q]));this.rng=rng;this.s={version:1,cycle:1,seen:[],completed:0,game:null};if(s&&s.version===1){this.s.seen=[...new Set((Array.isArray(s.seen)?s.seen:[]).filter(id=>this.byId.has(id)))];this.s.cycle=Number.isInteger(s.cycle)&&s.cycle>0?s.cycle:1;this.s.completed=Number.isInteger(s.completed)&&s.completed>=0?s.completed:0;const g=s.game;if(g&&Array.isArray(g.ids)&&g.ids.length>0&&g.ids.length<=25&&new Set(g.ids).size===g.ids.length&&g.ids.every(id=>this.byId.has(id))&&Number.isInteger(g.pos)&&g.pos>=0&&g.pos<g.ids.length&&g.answers&&typeof g.answers==='object'&&Object.entries(g.answers).every(([id,n])=>g.ids.includes(id)&&Number.isInteger(n)&&n>=0&&n<this.byId.get(id).options.length)&&(!g.complete||g.ids.every(id=>Object.hasOwn(g.answers,id))))this.s.game=g;}}
+get remaining(){return this.questions.length-this.s.seen.length;}
+get current(){const g=this.s.game;return g?this.byId.get(g.ids[g.pos]):null;}
+get selected(){const g=this.s.game;return g&&Object.hasOwn(g.answers,this.current.id)?g.answers[this.current.id]:null;}
+start(){if(!this.remaining)throw new Error('You have covered every question. Start a new cycle to revise them again.');const used=new Set(this.s.seen),counts=new Map();for(const id of used){const t=this.byId.get(id).topic_id;counts.set(t,(counts.get(t)||0)+1);}let pool=shuffle(this.questions.filter(q=>!used.has(q.id)),this.rng),selected=[];while(selected.length<25&&pool.length){const min=Math.min(...pool.map(q=>counts.get(q.topic_id)||0));const choices=pool.filter(q=>(counts.get(q.topic_id)||0)===min);const q=choices[Math.floor(this.rng()*choices.length)];selected.push(q.id);counts.set(q.topic_id,(counts.get(q.topic_id)||0)+1);pool=pool.filter(x=>x.id!==q.id);}this.s.game={ids:selected,answers:{},pos:0,complete:false};return this.current;}
+newCycle(){if(this.remaining)throw new Error('Finish covering this cycle first.');this.s.cycle++;this.s.seen=[];this.s.game=null;return this.start();}
+answer(n){const g=this.s.game,q=this.current;if(!g||g.complete||this.selected!==null||!Number.isInteger(n)||n<0||n>=q.options.length)return false;g.answers[q.id]=n;if(!this.s.seen.includes(q.id))this.s.seen.push(q.id);return n===q.answer;}
+next(){const g=this.s.game;if(!g||g.complete||this.selected===null)return false;if(g.pos===g.ids.length-1){g.complete=true;this.s.completed++;return 'complete';}g.pos++;return 'next';}
+result(){const g=this.s.game;if(!g)return null;let correct=0,answered=0;const wrongIds=[];for(const id of g.ids)if(Object.hasOwn(g.answers,id)){answered++;if(g.answers[id]===this.byId.get(id).answer)correct++;else wrongIds.push(id);}return {total:g.ids.length,answered,correct,wrong:wrongIds.length,percentage:Math.round(correct/g.ids.length*100),wrongIds};}
+}
+const api={Engine,shuffle};root.RECALL_ENGINE=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+})(globalThis);
